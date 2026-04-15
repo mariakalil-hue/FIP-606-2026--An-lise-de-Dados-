@@ -1,0 +1,309 @@
+---
+title: "Aula 6"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+## estatística com dois fatores
+
+```{r}
+#Iremos usar a aba "fungicida_vaso" do arquivo "arquivos diversos"
+
+library(readxl)
+library(tidyverse)
+
+fungicidas <- read_excel("dados_diversos.xlsx", 
+                         "fungicida_vaso")
+
+fungicidas2 <- fungicidas |>
+  mutate(incidencia = inf_seeds / n_seeds,
+         dose = factor(dose))
+
+fungicidas |> 
+  mutate(dose = factor(dose)) |> 
+  ggplot(aes(treat, severity, color = dose))+
+  geom_jitter(width = 0.1)+
+  facet_wrap(~ dose)+
+  theme(legend.position = "none")
+
+
+#a função a seguir nos ajuda a internder se há interação significativa entre os fatores da fubção
+interaction.plot(fungicidas$treat, fungicidas$dose, fungicidas$severity)
+
+
+  
+  
+```
+
+```{r}
+
+#anova só do tratamento
+m1<- lm(severity ~ treat, data = fungicidas2)
+anova(m1)
+
+#anova só da dose
+m2<- lm(severity ~ dose, data = fungicidas2)
+anova(m2)
+
+#anova da interação entre os fatores:
+
+m3 <- lm(severity ~ treat * dose, data = fungicidas2)
+anova(m3)
+
+#vamos ver se nosso modelo esta bom com DHARMa
+
+library(DHARMa)
+plot(simulateResiduals(m3))
+
+library(emmeans)
+
+#para comparar anti fundigo com anti fungico
+medias_m3 <- emmeans(m3, ~ treat| dose)
+medias_m3
+
+
+#para comparar dose com dose no mesmo anti fungico
+medias_m3 <- emmeans(m3, ~ dose | treat)
+medias_m3
+
+
+library(multcomp)
+cld(medias_m3)
+
+#recomenda-se tabela para retratar a interação entre dois fatores
+
+
+```
+
+### Tabela: Interação Fungicida × Dose
+
+| Fungicida        | Dose 0.5  | Dose 2.0  |
+|:-----------------|:---------:|:---------:|
+| **Ionic liquid** | 0.2921 Aa | 0.0501 Ab |
+| **Tebuconazole** | 0.0210 Ba | 0.0202 Aa |
+
+\*Médias seguidas pela mesma letra maiúscula na coluna e minúscula na linha não diferem entre si no nível de significância adotado (5%).
+
+
+
+
+## Carrega dados
+
+```{r}
+
+campo <- read_excel("dados_diversos.xlsx", 
+                         "fungicida_campo")
+
+campo2 <- campo |> 
+  mutate(trat = factor(TRAT),
+         bloco = factor(BLOCO)) |> 
+  dplyr::select(trat, bloco, PROD)  |>  ##colocar "dplyr::" antes do "select" porque muitas vezes o select simplesmente dá conflito com a função de ouytros selects de outras bubliotecas, então para não ter erro, espessificar como "dplyr::"
+  rename(prod = PROD)
+
+
+
+
+
+```
+
+
+
+##vIZUALIZA OS DADOS :
+
+
+```{r}
+
+campo2 |> 
+  ggplot(aes(trat, prod))+
+  geom_jitter(width = 0.05, alpha = 0.5)+
+  ylim(1500,6000)+
+  stat_summary()+
+  theme_classic()+
+  labs(x = "tratamento fungicida",
+       y = "produtiviidade (kkg/ha)")
+
+
+  
+```
+
+## Modelo de Anova
+
+
+```{r}
+
+m_bloco <- lm(prod ~ trat + bloco, data = campo2) ##esse tipo de determinação é em função do delineamento experimental, em blocos cazualizados
+plot(simulateResiduals(m_bloco))
+
+anova(m_bloco)
+
+medias_m_bloco <- emmeans(m_bloco, ~ trat)
+cld(medias_m_bloco, Letters = LETTERS)
+
+
+```
+
+##mesmo gg plot anterior mas com ajuda do gemini:
+
+
+```{r}
+
+# 1. Carregar bibliotecas necessárias
+library(ggplot2)
+library(emmeans)
+library(multcomp)
+library(multcompView)
+
+# 2. Transformar o resultado do cld em um data frame para o ggplot
+df_letras <- as.data.frame(cld(medias_m_bloco, Letters = LETTERS))
+
+# Limpando espaços extras que o cld às vezes gera nas letras
+df_letras$.group <- trimws(df_letras$.group)
+df_letras$.group <- trimws(df_letras$.group)
+
+2. Criar o gráfico combinando os dados originais (campo2) e as médias (df_letras)
+ggplot() +
+  # CAMADA 1: Dados originais (pontos brutos do seu dataset 'campo2')
+  # Usamos jitter para os pontos não ficarem um em cima do outro
+  geom_jitter(data = campo2, aes(x = trat, y = prod), 
+              width = 0.15, alpha = 0.4, color = "gray40") +
+  
+  # CAMADA 2: Barras de Erro (usando os limites do emmeans)
+  geom_errorbar(data = df_letras, aes(x = trat, ymin = lower.CL, ymax = upper.CL), 
+                width = 0.2, size = 0.8, color = "black") +
+  
+  # CAMADA 3: Ponto da Média (Rosa Choque / Hot Pink)
+  geom_point(data = df_letras, aes(x = trat, y = emmean), 
+             color = "deeppink", size = 3) +
+  
+  # CAMADA 4: Letras Estatísticas
+  geom_text(data = df_letras, aes(x = trat, y = upper.CL, label = .group), 
+            vjust = -1, size = 5, fontface = "bold") +
+  
+  # Estética e Rótulos
+  labs(x = "Tratamentos", 
+       y = "Produtividade",
+       title = "Distribuição de Dados e Médias com Teste de Tukey") +
+  theme_classic() +
+  # Ajuste do eixo Y para as letras caberem no topo
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))
+
+```
+
+O que cada parte faz por você:
+as.data.frame(): O objeto do emmeans não é lido diretamente pelo ggplot. Essa conversão é essencial.
+
+reorder(trat, emmean): Usei isso no x para que suas barras fiquem em ordem crescente de produtividade. Se quiser manter a ordem original dos tratamentos, use apenas x = trat.
+
+geom_text(aes(label = .group...)): É aqui que a mágica acontece. Ele pega a coluna .group (onde estão as letras A, AB, B) e posiciona no topo de cada barra.
+
+vjust = -0.5: Garante que a letra não fique "atropelando" o topo da barra ou do erro, dando um respiro visual.
+
+scale_y_continuous(...): Dá um ganho de 15% no topo do gráfico para garantir que a letra do tratamento 6 não seja cortada pela borda do gráfico.
+
+Dica técnica: Note que no seu resultado, quase todos compartilham a letra AB. No gráfico, isso vai mostrar visualmente que apenas o tratamento 1 e o 6 são realmente diferentes entre si, enquanto o "miolo" (2 ao 4) é a zona de transição estatística.
+
+
+
+
+## Conjunto MOFO
+
+```{r}
+
+mofo <- read_excel("dados_diversos.xlsx", 
+                         "mofo")
+
+
+# AVALIAR a produtividade em função da incidência da doença
+
+mofo |> 
+  ggplot(aes(inc, yld, color = factor(study)))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F)+
+   scale_color_colorblind()
+  #facet_wrap(~ study)
+
+
+
+# AVALIAR os escleródios em função da incidência da doença
+library(ggthemes)
+mofo |> 
+  ggplot(aes(inc, scl, color = factor(study)))+
+  geom_point()+
+  geom_smooth(method = "lm", se = F)+
+  scale_color_colorblind()
+  #facet_wrap(~ study)
+
+
+
+
+# 1. Cálculo preciso da posição (Fim da Reta)
+df_rotulos_ajustados <- mofo |> 
+  group_by(study) |> 
+  summarise(
+    inc_max = max(inc, na.rm = TRUE),
+    r_val = cor(inc, scl, use = "complete.obs")
+  ) |> 
+  # Calculamos o Y da reta para cada estudo usando a fórmula da regressão
+  group_by(study) |> 
+  mutate(
+    modelo = list(lm(scl ~ inc, data = mofo[mofo$study == study, ])),
+    scl_pred = predict(modelo[[1]], newdata = data.frame(inc = inc_max)),
+    label = paste0("r = ", round(r_val, 2))
+  )
+
+# 2. Gráfico com os rótulos "colados" no fim da reta
+mofo |> 
+  ggplot(aes(inc, scl, color = factor(study))) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", se = FALSE) +
+  # Usamos o scl_pred para o texto nascer exatamente no fim da linha
+  geom_text(data = df_rotulos_ajustados, 
+            aes(x = inc_max, y = scl_pred, label = label),
+            hjust = -0.1,    # Afasta um pouquinho para a direita
+            vjust = 0.5,     # Centraliza verticalmente com a ponta da reta
+            size = 4, 
+            fontface = "bold",
+            show.legend = FALSE) +
+  scale_color_colorblind() +
+  # Expansão do eixo X para caber o texto
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.25))) +
+  theme_minimal() +
+  labs(x = "Incidência (%)", y = "Scl", color = "Estudo")
+
+
+
+
+
+    # coeficiente:
+cor(mofo$inc, mofo$yld, method = "pearson")
+
+mofo |> 
+  group_by(study) |> 
+  summarise(correlacao = cor(inc, yld))
+summary(mofo)
+
+mofo2 <- mofo |> 
+  group_by(study) |> 
+  summarise(correlacao = cor(inc, yld))
+summary(mofo2)
+
+# histograma de cada variável dependente do experimento mofo:
+
+hist(mofo$yld)
+hist(mofo$inc)
+hist(mofo$scl)
+
+
+
+library(ggplot2)
+library(ggpubr)
+
+correlações <- mofo |> 
+  group_by(study) |> 
+  summarise(r = cor(inc, yld))
+
+
+```
+
