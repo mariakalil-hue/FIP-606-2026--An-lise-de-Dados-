@@ -1,0 +1,198 @@
+---
+title: "Aula 2"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+## Tema da aula: Importar Arquivos locais
+
+Arquivos do tipo excel são carregados usando funçoes específicas de pacotes. Um dos pacotes disponíveis é o 'readx1'.
+
+```{r}
+# Daos em excel:
+library(readxl)
+meudado <- read_excel("dados_diversos.xlsx",
+                      "coffee rust")
+meudado
+
+
+# Dados em CSV:
+library(tidyverse)
+meucsv <- read.csv("experimento.csv")
+meucsv
+
+
+# Dados em nuvem Google 
+#OBS.: Planilhas na nuvem devem estar com o acesso aberto para qualquer um com link visuualizar. caso contrário, o R não consegue acessar os dados
+
+library(gsheet)
+
+#criando o dado da aba "Mildio_curvas"
+meudadonuvemmildiocurvas <- gsheet2tbl("https://docs.google.com/spreadsheets/d/1bq2N19DcZdtax2fQW9OHSGMR0X2__Z9T/edit?gid=1110310360#gid=1110310360")
+
+#Criando o dado da aba "Coffee rust"
+meudadonuvemcoffee <- gsheet2tbl("https://docs.google.com/spreadsheets/d/1bq2N19DcZdtax2fQW9OHSGMR0X2__Z9T/edit?gid=1871397229#gid=1871397229")
+
+
+#Dados em pacotes
+#OBS.: "PowderyMildew" é um exemplo de conjuntos de daos que já está na biblioteca epifitter, só para exemplificar como podem ser dados de pacote.Os pacotes são um conjunto de funções. alem disso, podem trazer dados para exemplos, como é o caso do PowderMilew.
+
+library(epifitter)
+dadopacote <- epifitter::PowderyMildew
+dadopacote
+
+# "str", uusada a seguir, chama a explicação da estrututa do pacote de dados. Essa função basicamente explica os dados:
+str(dadopacote)
+
+#dados em csv direto do github (que é um Facebook dos programadores.) 
+#dadogh <- read_csv(link do arquivo no github)
+
+```
+
+## Formato Largo para longo
+
+```{r}
+
+# agora vamos fazer....
+
+software <- gsheet2tbl("https://docs.google.com/spreadsheets/d/1bq2N19DcZdtax2fQW9OHSGMR0X2__Z9T/edit?gid=373270992#gid=373270992")
+
+glimpse(software)
+
+library(tidyverse)
+dados <- software
+dados_longo <- dados |> #crt +shoft + m
+  pivot_longer(
+    cols = c(Assess, LeafDoctor, ImageJ),
+    names_to = "software",
+    values_to = "severidade"
+    )
+
+
+#Criando gráfico lindamente:
+
+dados_longo |> 
+  ggplot(aes(software, severidade,
+             color = software)) +
+  geom_boxplot(outlier.color = NA) +
+  geom_jitter(width = 0.2, 
+              alfa = 0.3
+              ) +
+  theme_minimal() +
+  theme(legend.position = "none")+
+  facet_wrap(~ crop)
+
+
+
+```
+
+## Verbos do dply: vamos aprender a selecionar colunas e filtrar linhas por alguma condição.
+
+```{r}
+
+#Selecionando apenas as colunas de interesse:
+
+Assess <- software |> 
+  select(crop, rep, Assess)
+Assess
+
+
+Assess2 <- dados_longo |> 
+  filter(software == "Assess")
+Assess2
+
+ImageJ <- dados_longo |> 
+  filter(software == "ImageJ")
+ImageJ
+#dados recebem ImageJ e filtra softwate ImageJ
+
+
+LeafDoctor <- dados_longo |> 
+  filter(software == "LeafDoctor")
+LeafDoctor
+
+
+# GRÁFICOS POR PROGGRAMA DE IMAGEM:
+
+p_a<-Assess2|> 
+  ggplot(aes(crop, severidade, color = crop))+
+  geom_jitter(width = 0.1)+
+  labs(title = "Assess2")
+p_a
+
+
+p_ld <- LeafDoctor |> 
+  ggplot(aes(crop, severidade, color = crop))+
+  geom_jitter(width = 0.1)+
+  labs(title = "LeafDoctor")
+p_ld
+
+p_ij <- ImageJ |> 
+  ggplot(aes(crop, severidade, color = crop))+
+  geom_jitter(width = 0.1)+
+  labs(title = "ImageJ")
+p_ij
+
+#patchwork permite plotar vários gráficos juntos.
+
+library(patchwork)
+
+p_ld + p_ij #jeitinho de gráficos lado a lado
+p_ld / p_ij #um encima do outro
+
+(p_ld / p_ij)
+  plot_annotation(tag_levels = "A")
+
+((p_ld | p_ij )/p_a)+
+  plot_annotation(tag_levels = "A") # esse código adiciona letras a cada gráfico.
+  plot_layout(guides = "collect") &
+  theme(legend.position = "buttom")
+
+ggsave("plot1.png",wigth =  7, height = 6, bg = "white")
+```
+
+## Sumarizar e Agrupar
+
+```{r}
+
+# SUMARIZAR:
+library(tidyverse)
+
+
+plot2 <- dados_longo |> 
+  group_by(crop, software) |> 
+  summarise(media_severidade = mean(severidade), 
+            dp_severidade = sd(severidade)) |> 
+  filter(software == "Assess") |>
+  ggplot(aes(crop, media_severidade, fill = crop))+
+  geom_col()+
+  geom_point()+
+  geom_errorbar(aes(ymin = media_severidade - dp_severidade, ymax = media_severidade + dp_severidade), width = 0.1)+
+  theme_classic()+
+  theme(legend.position = "none")
+
+```
+
+## Gráfico de Relações
+
+```{r}
+ ld_as <- software |> 
+   ggplot(aes(Assess, ImageJ))+
+   geom_point(size = 2, color = "darkorange")+
+   ylim(0,100)+
+   xlim(0,100)+
+   geom_abline(intercept = 0, slope = 1, linetype = 2)+
+   geom_smooth(method = "lm", se = F, color = "black")
+ 
+ 
+ 
+ ij_ld <- software |> 
+   ggplot(aes(ImageJ, LeafDoctor))+
+   geom_point(size = 2, color = "darkorange")+
+   ylim(0,100)+
+   xlim(0,100)+
+   geom_abline(intercept = 0, slope = 1, linetype = 2)+
+   geom_smooth(method = "lm", se = F, color = "black")
+```

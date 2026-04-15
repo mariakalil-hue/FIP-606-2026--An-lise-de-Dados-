@@ -1,0 +1,161 @@
+---
+title: "Aula 5"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+library(tidyverse)
+
+insetos <- InsectSprays
+
+insetos |> 
+  ggplot(aes(spray, count))+
+  geom_boxplot(outilier.colour = NA)+
+  geom_jitter(width = 0.1)+
+  theme_classic()
+
+
+## Teste Anova
+
+m1 <- lm(count ~ spray, data = insetos)
+m1
+summary(m1)
+anova(m1)
+
+hist(m1$residuals)
+shapiro.test(m1$residuals)
+bartlett.test(count ~ spray, data = insetos)
+
+#a seguir estão: uma biblioteca para receber a resposta mais rápida dos testes de normalidade e heterocesasticidade (shapiro e teste bareltt, respectivamente)
+library(performance)
+check_normality(m1)
+check_heteroscedasticity(m1)
+
+
+## Teste não paramétrico:
+
+kruskal.test(count ~ spray, data = insetos)
+
+library(DHARMa)
+plot(simulateResiduals(m1))
+
+
+
+## Agora vamos transformar os dados segundo a raiz quadrada, para tornar as variancias homogêneas:
+
+
+insetos2 <- insetos |> 
+  mutate(count2 = sqrt(count))
+
+m2 <- lm(count2 ~ spray, data = insetos2)
+m2
+summary(m2)
+anova(m2)
+
+hist(m2$residuals)
+shapiro.test(m2$residuals)
+bartlett.test(count2 ~ spray, data = insetos2)
+
+insetos2 |> 
+  ggplot(aes(spray, count2))+
+  geom_boxplot(outilier.colour = NA)+
+  geom_jitter(width = 0.1)+
+  theme_classic()
+
+check_normality(m2)
+check_heteroscedasticity(m2)
+
+
+## Teste não paramétrico:
+
+kruskal.test(count2 ~ spray, data = insetos2)
+
+library(DHARMa)
+plot(simulateResiduals(m2))
+
+
+
+
+## Comparação de médias (Post-hoc)
+# 1. Gerar as médias na escala da raiz
+
+library(emmeans)
+library(multcomp)
+library(multcompView)
+
+medias_raiz <- emmeans(m2, ~ spray)
+
+# 2. Informar ao R que isso é uma raiz quadrada e pedir a escala original
+# O "type = 'response'" vai elevar os valores ao quadrado automaticamente
+medias_originais <- update(medias_raiz, tran = "sqrt") |> 
+  summary(type = "response")
+
+# Visualizar o resultado
+medias_originais
+
+cld(medias_raiz, Letters = LETTERS)
+
+library(agricolae)
+
+k <- kruskal(insetos$count, insetos$spray)
+k
+
+
+
+
+## Modelo Linear Generalizado (Poisson)
+m3 <- glm(count ~ spray, 
+          family = poisson(link = "log"),
+          data = insetos)
+m3
+anova(m3)
+
+  
+  # Ver o resumo do modelo
+summary(m3)
+
+# Teste de "ANOVA" para o GLM (Análise de Deviance)
+anova(m3, test = "Chisq")
+
+# Verificar resíduos específicos para GLM usando o DHARMa
+library(DHARMa)
+residuos_m3 <- simulateResiduals(m3)
+plot(residuos_m3)
+
+emmeans(m3, ~ spray, type = "response")
+
+
+
+df3 <- cld(emmeans(m3, ~ spray, type = "response"), Letters = LETTERS)
+
+df3 |> 
+  ggplot(aes(x = reorder(spray, rate), y= rate, label =.group))+
+  geom_point(size = 2)+
+  geom_errorbar(aes(ymin = asymp.LCL,
+                    ymax = asymp.UCL),
+                width = 0.1)+
+  # Adicionando as letras acima do limite superior (asymp.UCL)
+  geom_text(aes(y = asymp.UCL, label = .group), 
+            vjust = -0.5,           # Ajusta a letra para cima da coordenada y
+            size = 4)+
+  ylim(0,25)+
+  labs(y = "Contagem média de insetos vivos", x = "Inseticida")+
+  theme_classic()+
+  coord_flip()
+
+## Para um artigo, o mais moderno, mais elegante e mais bem aceito pelos revisores é não fazer transformação de dados e usar "glm".
+
+
+
+```

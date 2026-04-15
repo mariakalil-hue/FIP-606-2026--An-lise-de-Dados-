@@ -1,0 +1,232 @@
+---
+title: "Aula 4"
+format: revealjs
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+## Aula 4
+
+```{r}
+ 
+library(tidyverse)
+library(readxl)
+library(epifitter)
+
+
+dados <- read_excel("dados_diversos.xlsx", "curve")
+
+dados |> 
+  group_by(Irrigation, day) |> 
+  summarise(mean_sev = mean(severity*100),  #se você multiplica por 100 dentro do ggplot, você converte a variável em porcentagem (%)
+            sd_sev = sd(severity*100)) |> #se você multiplica por 100 dentro do ggplot, você converte a variável em porcentagem (%)
+  ggplot(aes(day, mean_sev, group = Irrigation,
+             color = Irrigation))+
+  geom_point()+
+  geom_line()+
+  geom_errorbar(aes(ymin = mean_sev - sd_sev,
+               ymax = mean_sev + sd_sev),
+               width = 0.1)
+
+## cálculo da área abaixo da curva de progresso da doença
+
+dados |>
+  group_by(Irrigation, rep) |> 
+  summarise(audpc = AUDPC(day, severity)) |> #cálculo da área abaixo da curva por meio de integração!!!
+  group_by(Irrigation) |>
+  summarise(mean_audpc = mean(audpc),
+            sd_audpc = sd(audpc)) |> 
+  ggplot(aes(Irrigation, mean_audpc))+
+  geom_col(width = 0.5)+
+  geom_point()+
+  geom_errorbar(aes(ymin = mean_audpc - sd_audpc,
+                    ymax = mean_audpc + sd_audpc),
+                width = 0.1)+
+  ylim(0, 20)
+
+
+```
+
+```{r}
+library(tidyverse)
+
+dados |>
+  group_by(Irrigation, rep) |> 
+  summarise(audpc = AUDPC(day, severity), .groups = "drop") |> 
+  group_by(Irrigation) |>
+  summarise(
+    n = n(),
+    mean_audpc = mean(audpc),
+    sd_audpc = sd(audpc),
+    # Cálculo do Erro Padrão
+    se_audpc = sd(audpc) / sqrt(n()) 
+  ) |> 
+  ggplot(aes(Irrigation, mean_audpc)) +
+  geom_col(fill = "steelblue", width = 0.5) +
+  geom_point() +
+  # Substituímos o sd_audpc pelo se_audpc
+  geom_errorbar(aes(ymin = mean_audpc - se_audpc, 
+                    ymax = mean_audpc + se_audpc), 
+                width = 0.1) +
+  labs(y = "AUDPC Médio (± Erro Padrão)", x = "Irrigação") +
+  theme_minimal() +
+  ylim(0, 20)
+```
+
+```{r}
+library(tidyverse)
+
+dados |>
+  group_by(Irrigation, rep) |> 
+  summarise(audpc = AUDPC(day, severity), .groups = "drop") |> 
+  group_by(Irrigation) |>
+  summarise(
+    n = n(),
+    mean_audpc = mean(audpc),
+    sd_audpc = sd(audpc),
+    se_audpc = sd_audpc / sqrt(n),
+    # Cálculo do IC de 95%
+    # qt(0.975, df = n-1) encontra o valor de t para a confiança desejada
+    ic_95 = qt(0.975, df = n - 1) * se_audpc
+  ) |> 
+  ggplot(aes(Irrigation, mean_audpc)) +
+  geom_col(fill = "seagreen", width = 0.5, alpha = 0.8) +
+  geom_point() +
+  # Usando o IC para as barras de erro
+  geom_errorbar(aes(ymin = mean_audpc - ic_95, 
+                    ymax = mean_audpc + ic_95), 
+                width = 0.1, color = "black") +
+  labs(
+    title = "AUDPC por Tratamento",
+    subtitle = "Barras de erro representam Intervalo de Confiança (95%)",
+    y = "Média AUDPC",
+    x = "Irrigação"
+  ) +
+  theme_classic()
+```
+
+## Teste t
+
+```{r}
+
+library(rstatix)
+dados2 <- dados |>
+  group_by(Irrigation, rep) |>
+  summarise(audpc = AUDPC(day, severity))
+
+t.test(audpc ~ Irrigation, data = dados2)
+
+```
+
+```{r}
+
+escala <- read_excel("dados_diversos.xlsx", "escala")
+
+head(escala)
+
+escala |> 
+  ggplot(aes(assessment, acuracia))+
+  geom_boxplot(outlier.colour = NA)+
+  geom_jitter(width = 0.1)+
+  ylim(0,1)
+
+t.test(acuracia ~ assessment,
+       paired = TRUE,
+       data = escala)
+
+escala_wide <- escala |> 
+  select(rater, assessment, acuracia) |>
+  pivot_wider(
+    names_from = assessment,
+    values_from = acuracia
+  )
+
+
+t.test(escala_wide$Aided1,
+       escala_wide$Unaided,
+       paired = TRUE)
+
+#se os valores a seguir plotados juntos, os pontos ficarem fora da linha, rejeita-se a hipótese nula de normalidade, e portanto rejeita-se a normalidade, e deve-se usar um teste não normal. Para rodar o gráfico do Q-Q Plot, precisa selecionar as duas linhas a seguir, simultaneamente, e rodar o código::::::
+
+qqnorm(escala_wide$Unaided)
+qqline(escala_wide$Unaided)
+
+shapiro.test(escala_wide$Unaided)
+
+
+qqnorm(escala_wide$Aided1)
+qqline(escala_wide$Aided1)
+
+shapiro.test(escala_wide$Aided1)
+
+
+## Assumindo a não normalidade ddos dados, é necessário seguir com a estatística não paramétrica. Uma opção é o Wilcox.test
+
+wilcox.test(escala_wide$Aided1,
+            escala_wide$Unaided,
+            paired = TRUE)
+
+
+  
+```
+
+##É possivel concluir com wilcox, que a acurácia dos avaliadores foi significativamente maior com o uso do método Aided1 em coomparaçção ao método....
+
+##teste T para dois grupos. Anova para 3 ou mais grupos. primeiro voce assume normalidade e depois você comprova se stá certa ou não. se estiver errada, parte para estatística não paramétrica.
+
+#Dados micelial
+
+```{r}
+dados_mice <- read_excel("dados_diversos.xlsx", "micelial")
+
+set.seed(1)
+dados_mice |> 
+  ggplot(aes(reorder(especie, tcm), tcm))+
+  geom_boxplot(outlier.color = NA)+
+  geom_jitter(width = 0.1)+
+  coord_flip() #inverte visualmente as variáveis
+
+m1 <- lm(tcm ~ especie, data = dados_mice)
+m1
+anova(m1)
+
+#agoras vamos testar as normalidades 
+hist(m1$residuals)
+
+qqnorm(m1$residuals)
+qqline(m1$residuals)
+shapiro.test(m1$residuals)
+
+#teste de homocedasticidade
+bartlett.test(tcm ~ especie, data = dados_mice)
+#já que o valor de p deu maior que 0,055, assumo qeu os dados são homogêneos
+
+
+#agora vamos calcular média para..........................
+
+library(emmeans)
+
+medias_m1 <- emmeans(m1, ~ especie)
+medias_m1
+
+library(multcomp)
+medias_m1b <- cld(medias_m1, Letters = letters)
+
+medias_m1b |>
+  ggplot(aes(especie, emmean))+
+  geom_point()+
+  geom_errorbar(aes(ymax = upper.CL,
+                    ymin = lower.CL),
+                width = 0.1)+
+  ylim(0,2)+
+  geom_text(aes(label = .group), 
+            hjust = 0,          # Alinha à esquerda do texto (colocando-o à direita do ponto)
+            nudge_y = 0.12,         # Dá um pequeno espaço horizontal
+            size = 4) +            # Ajusta o tamanho da letra se necessário
+  theme_classic()+
+  coord_flip()+ #para inverter as informações no gráfico
+  labs(x = "", y = "Taxa de crescimento micelial (mm/dia)")
+  
+
+```
